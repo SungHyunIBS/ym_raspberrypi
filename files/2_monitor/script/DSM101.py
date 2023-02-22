@@ -83,7 +83,7 @@ def main():
         data = []
         try:
             datapoint = read(devinfo)
-            dev       = datapoing['dev']
+            dev       = datapoint['dev']
             data.append(datapoint)
         except:
             logging.exception('Exception: ')
