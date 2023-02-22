@@ -65,7 +65,7 @@ fi
 ## Python Environment
 * Working directory : `/opt/monitor`
 	* `cd /opt; sudo mkdir monitor; sudo chown pi:pi monitor; cd monitor`
-	* `mkdir data log out script supervisor/available`
+	* `mkdir -p data log out script supervisor/available`
 * Python virtual evnironment
 	* `python3 -m venv venv`
 	* `source venv/bin/activate`
