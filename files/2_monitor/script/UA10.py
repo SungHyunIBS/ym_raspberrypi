@@ -11,9 +11,10 @@ logging.basicConfig(stream=sys.stdout, format="%(asctime)s %(levelname)-8s %(mes
 
 SLOWDIR = '/opt/monitor'
 
-def read(dev_md, dev_usb, dev_pos):
+def read(devinfo):
+
     datapoint = {}
-    with serial.Serial(dev_usb, 19200, timeout=5) as ser:
+    with serial.Serial(devinfo['dev'], 19200, timeout=1) as ser:
         ser.write(b'ATCD\r\n')
         line1 = ser.readline()
         ser.write(b'ATCMODEL\r\n')
@@ -28,42 +29,43 @@ def read(dev_md, dev_usb, dev_pos):
     temp, hum   = result.split(',')
 
     datapoint = {
-        'name' : 'temphum',
-        'dev'  : sn,
-        'model': dev_md,
-        'time' : int(time.time()),
-        'temp' : float(temp),
-        'hum'  : float(hum),
-        'pos'  : dev_pos
+        'name'  : 'temphum',
+        'dev'   : sn,
+        'model' : devinfo['model'],
+        'time'  : int(time.time()),
+        'temp'  : float(temp),
+        'hum'   : float(hum),
+        'pos'   : devinfo['pos']
     }
-    
     return datapoint
 
 def main():
+ 
+    model = os.getenv('DEVICE_MD',  '')
+    dev   = os.getenv('DEVICE_USB', '')
+    pos   = os.getenv('DEVICE_POS', '')
 
-    dev_md  = os.getenv('DEVICE_MD', '')
-    dev_usb = os.getenv('DEVICE_USB', '')
-    dev_pos = os.getenv('DEVICE_POS', '')
+    devinfo = {
+        'model' : model,
+        'dev'   : dev,
+        'pos'   : pos
+    }
     
     while True:
         data = []
         try:
-            datapoint = read(dev_md, dev_usb, dev_pos)
+            datapoint = read(devinfo)
+            dev       = datapoint['dev']
             data.append(datapoint)
-            dev   = datapoint['dev']
-            model = dev_md
-            pos   = dev_pos
-            except:
-                logging.exception('Exception: ')
+        except:
+            logging.exception('Exception: ')
 
-            logging.debug(data)
-            
+        logging.debug(data)
         try:
             p = Path(SLOWDIR) / 'data' / f'{model}_{pos}_{dev}.dat'
             with p.open('w') as f:
                 for d in data:
                     f.write(json.dumps(d)+'\n')
-            f.close()
             
             cmd = f'scp {p} ymmon:/monitor/raw/'
             os.popen(cmd)

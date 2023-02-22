@@ -7,7 +7,18 @@
 	* [Webcam](#webcam-script)
 	* [RAD7](#rad7-script)
 	* [UA10](#ua10-script)
+	* [UA58](#ua58-script)
+	* [RS9A](#rs9a-script)
+	* [DSM101](#dsm101-script)
+	* [APEXP3](#apexp3-script)
 3. [Supervisor](#supervisor)
+	* [Webcam](#webcam-supervisor)
+	* [RAD7](#rad7-supervisor)
+	* [UA10](#ua10-supervisor)
+	* [UA58](#ua58-supervisor)
+	* [RS9A](#rs9a-supervisor)
+	* [DSM101](#dsm101-supervisor)
+	* [APEXP3](#apexp3-supervisor)
 4. [ETC](#etc)
 
 <hr/>
@@ -48,11 +59,26 @@ libjasper-dev libgdk-pixbuf2.0-dev
 * Install py-serial
 	* `pip install pyserial`
 
+### APEX P3
+* Install pyModbusTCP (APEXP3)
+	* `pip install pyModbusTCP`
+* Need wired connection using cross-cable
+	* Settings for simultaneous use of wired and wireless Internet
+	* Modify `/etc/dhcpcd.conf` and insert following lines
+		* Wireless : 192.168.1.XXX
+		* Wired    : 192.168.2.XXX
+
+```
+interface eth0
+static ip_address=192.168.2.2/24
+nogateway
+```
+
 ## Script
 ### Webcam-script
 * `webcam.py`
 
-```
+```python
 #!/opt/monitor/venv/bin/python
 
 from datetime import datetime
@@ -375,7 +401,7 @@ if __name__ == '__main__':
 
 ### Radionode
 * UA10 : Humidity / Temperature
-* UA58 : Airborne Chemical (O~2~, CO~2~, CO, H~2~S)
+* UA58 : Airborne Chemical (O<sub>2</sub>, CO<sub>2</sub>, CO, H<sub>2</sub>S)
 
 #### UA10-script
 * `UA10.py`
@@ -394,9 +420,10 @@ logging.basicConfig(stream=sys.stdout, format="%(asctime)s %(levelname)-8s %(mes
 
 SLOWDIR = '/opt/monitor'
 
-def read(dev_md, dev_usb, dev_pos):
+def read(devinfo):
+
     datapoint = {}
-    with serial.Serial(dev_usb, 19200, timeout=5) as ser:
+    with serial.Serial(devinfo['dev'], 19200, timeout=1) as ser:
         ser.write(b'ATCD\r\n')
         line1 = ser.readline()
         ser.write(b'ATCMODEL\r\n')
@@ -411,42 +438,43 @@ def read(dev_md, dev_usb, dev_pos):
     temp, hum   = result.split(',')
 
     datapoint = {
-        'name' : 'temphum',
-        'dev'  : sn,
-        'model': dev_md,
-        'time' : int(time.time()),
-        'temp' : float(temp),
-        'hum'  : float(hum),
-        'pos'  : dev_pos
-    }
-    
+        'name'  : 'temphum',
+        'dev'   : sn,
+        'model' : devinfo['model'],
+        'time'  : int(time.time()),
+        'temp'  : float(temp),
+        'hum'   : float(hum),
+        'pos'   : devinfo['pos']
+    } 
     return datapoint
 
 def main():
+ 
+    model = os.getenv('DEVICE_MD',  '')
+    dev   = os.getenv('DEVICE_USB', '')
+    pos   = os.getenv('DEVICE_POS', '')
 
-    dev_md  = os.getenv('DEVICE_MD', '')
-    dev_usb = os.getenv('DEVICE_USB', '')
-    dev_pos = os.getenv('DEVICE_POS', '')
+    devinfo = {
+        'model' : model,
+        'dev'   : dev,
+        'pos'   : pos
+    }
     
     while True:
         data = []
         try:
-            datapoint = read(dev_md, dev_usb, dev_pos)
+            datapoint = read(devinfo)
+            dev       = datapoing['dev']
             data.append(datapoint)
-            dev   = datapoint['dev']
-            model = dev_md
-            pos   = dev_pos
-            except:
-                logging.exception('Exception: ')
+        except:
+            logging.exception('Exception: ')
 
-            logging.debug(data)
-            
+        logging.debug(data)
         try:
             p = Path(SLOWDIR) / 'data' / f'{model}_{pos}_{dev}.dat'
             with p.open('w') as f:
                 for d in data:
                     f.write(json.dumps(d)+'\n')
-            f.close()
             
             cmd = f'scp {p} ymmon:/monitor/raw/'
             os.popen(cmd)
@@ -465,6 +493,95 @@ if __name__ == '__main__':
 ```
 
 #### UA58-script
+* `UA58.py`
+
+```python
+#!/opt/monitor/venv/bin/python
+import sys
+import time
+import logging
+from pathlib import Path
+import json
+import serial
+import os
+
+logging.basicConfig(stream=sys.stdout, format="%(asctime)s %(levelname)-8s %(message)s", level=logging.DEBUG)
+
+SLOWDIR = '/opt/monitor'
+
+def read(devinfo):
+
+    datapoint = {}
+    with serial.Serial(devinfo['dev'], 19200, timeout=1) as ser:
+        ser.write(b'ATCQ\r\n')
+        line1 = ser.readline()
+        ser.write(b'ATCMODEL\r\n')
+        line2 = ser.readline()
+        
+    line1 = line1.decode('utf-8').strip()
+    line2 = line2.decode('utf-8').strip()
+    logging.debug(f'RESPONSE: {line1} {line2}')
+    
+    cmd, result      = line1.split(' ')
+    cmd, sn          = line2.split(' ')
+    co, o2, h2s, co2 = result.split(',')
+
+    datapoint = {
+        'name'  : 'Gas Sensor',
+        'dev'   : sn,
+        'model' : devinfo['model'],
+        'time'  : int(time.time()),
+        'co'    : float(co),
+        'o2'    : float(o2),
+        'h2s'   : float(h2s),
+        'co2'   : float(co2),
+        'pos'   : devinfo['pos']
+    }
+    return datapoint
+
+def main():
+
+    model = os.getenv('DEVICE_MD',  '')
+    dev   = os.getenv('DEVICE_USB', '')
+    pos   = os.getenv('DEVICE_POS', '')
+
+    devinfo = {
+        'model' : model,
+        'dev'   : dev,
+        'pos'   : pos
+    }
+    
+    while True:
+        data = []
+        try:
+            datapoint = read(devinfo)
+            dev       = datapoint['dev']
+            data.append(datapoint)
+        except:
+                logging.exception('Exception: ')
+                
+        logging.debug(data)
+        try:
+            p = Path(SLOWDIR) / 'data' / f'{model}_{pos}_{dev}.dat'
+            with p.open('w') as f:
+                for d in data:
+                    f.write(json.dumps(d)+'\n')
+
+            cmd = f'scp {p} ymmon:/monitor/raw/'
+            os.popen(cmd)
+            time.sleep(60)
+
+        except KeyboardInterrupt:
+            logging.info('Good bye!')
+            break
+        except:
+            logging.exception('Exception: ')
+            time.sleep(60)
+
+if __name__ == '__main__':
+    main()
+```
+
 ### FTLab
 * RS9A : Radon
 * DSM101 : Dust
@@ -486,9 +603,10 @@ logging.basicConfig(stream=sys.stdout, format="%(asctime)s %(levelname)-8s %(mes
 
 SLOWDIR = '/opt/monitor'
 
-def read(dev_md, dev_usb, dev_pos):
+def read(devinfo):
+
     datapoint = {}
-    with serial.Serial(dev_usb, 19200, timeout=5) as ser:
+    with serial.Serial(devinfo['dev'], 19200, timeout=1) as ser:
         ser.write(b'VALUE?\r\n')
         line1 = ser.readline()
         ser.write(b'SERIALNO?\r\n')
@@ -522,39 +640,40 @@ def read(dev_md, dev_usb, dev_pos):
     datapoint = {
         'name'  : 'Radon Sensor',
         'dev'   : sn,
-        'model' : dev_md,
+        'model' : devinfo['model'],
         'time'  : int(time.time()),
         'Rn'    : int(rn),
-        'pos'   : dev_pos
+        'pos'   : devinfo['pos']
     }
-
     return datapoint
         
 def main():
 
-    dev_md  = os.getenv('DEVICE_MD', '')
-    dev_usb = os.getenv('DEVICE_USB', '')
-    dev_pos = os.getenv('DEVICE_POS', '')
+    model = os.getenv('DEVICE_MD',  '')
+    dev   = os.getenv('DEVICE_USB', '')
+    pos   = os.getenv('DEVICE_POS', '')
+
+    devinfo = {
+        'model' : model,
+        'dev'   : dev,
+        'pos'   : pos
+    }
 
     while True:
         data = []
         try:
-            datapoint = read(dev_md, dev_usb, dev_pos)
+            datapoint = read(devinfo)
+            dev       = datapoing['dev']
             data.append(datapoint)
-            dev   = datapoint['dev']
-            model = dev_md
-            pos   = dev_pos
         except:
             logging.exception('Exception: ')
 
         logging.debug(data)
-
         try:
             p = Path(SLOWDIR) / 'data' / f'{model}_{pos}_{dev}.dat'
             with p.open('w') as f:
                 for d in data:
                     f.write(json.dumps(d)+'\n')
-            f.close()
 
             cmd = f'scp {p} ymmon:/monitor/raw/'
             os.popen(cmd)
@@ -577,10 +696,326 @@ if __name__ == '__main__':
 ```
 
 #### DSM101-script
+* `DSM101.py`
+
+```python
+#!/opt/monitor/venv/bin/python
+import sys
+import time
+import logging
+from pathlib import Path
+import json
+import serial
+import os
+
+logging.basicConfig(stream=sys.stdout, format="%(asctime)s %(levelname)-8s %(message)s", level=logging.DEBUG)
+
+SLOWDIR = '/opt/monitor'
+
+def read(devinfo):
+
+    w_basic_info  = b'\x02\x12\x00\x00\xED\r\n'
+    w_value_query = b'\x02\x10\x00\x00\xEF\r\n'
+    datapoint = {}
+    
+    with serial.Serial(devinfo['dev'], 19200, timeout=1) as ser:
+        ser.write(w_basic_info)
+        # Read
+        # STX(1), CMD(1), Size(2; lsb, msb), Data(23), Chksum(1)
+        line = ser.readline()
+        stx    = line[0]
+        cmd    = line[1]
+        if(stx == 0x02 and cmd == 0x13):
+            sn = line[5:17].decode('utf-8').strip()
+        else:
+            raise NameError('Retry')
+
+        ser.write(w_value_query)
+    
+        # Read
+        # STX(1), CMD(1), Size(2; lsb, msb), Data(24), Chksum(1)
+        line = ser.readline()
+        logging.debug(f'Data size:  {len(line)}')
+
+        if(len(line) == 29):
+            stx    = line[0]
+            cmd    = line[1]
+            chksum = line[-1]
+            if(stx == 0x02 and cmd == 0x11):
+                size = line[3]*16 + line[2]
+                if(size == 24):
+                    data = line[4:28]
+                    pm1_10min   = data[13] * 16 + data[12]
+                    pm2d5_10min = data[15] * 16 + data[14]
+                    pm10_10min  = data[17] * 16 + data[16]
+                    datapoint = {
+                        'name'  : 'Dust Counter',
+                        'dev'   : sn,
+                        'model' : devinfo['model'],
+                        'time'  : int(time.time()),
+                        'pm1'   : pm1_10min,
+                        'pm2d5' : pm2d5_10min,
+                        'pm10'  : pm10_10min,
+                        'pos'   : devinfo['pos']
+                    }
+                    
+                else:
+                    raise NameError('Retry')
+            else:
+                raise NameError('Retry')
+        else:
+            raise NameError('Retry')
+    
+    return datapoint
+
+def main():
+
+    model = os.getenv('DEVICE_MD',  '')
+    dev   = os.getenv('DEVICE_USB', '')
+    pos   = os.getenv('DEVICE_POS', '')
+
+    devinfo = {
+        'model' : model,
+        'dev'   : dev,
+        'pos'   : pos
+    }
+    
+    while True:
+        data = []
+        try:
+            datapoint = read(devinfo)
+            dev       = datapoint['dev']
+            data.append(datapoint)
+        except:
+            logging.exception('Exception: ')
+
+        logging.debug(data)
+        try:
+            p = Path(SLOWDIR) / 'data' / f'{model}_{pos}_{dev}.dat'
+            with p.open('w') as f:
+                for d in data:
+                    f.write(json.dumps(d)+'\n')
+            f.close()
+
+            cmd = f'scp {p} ymmon:/monitor/raw/'
+            os.popen(cmd)
+            time.sleep(600)
+            
+        except KeyboardInterrupt:
+            logging.info('Good bye!')
+            break
+        except NameError:
+            logging.exception('Exception: Retry')
+            time.sleep(60)
+        except:
+            logging.exception('Exception: ')
+            time.sleep(60)
+
+if __name__ == '__main__':
+    main()
+```
+
 ### ApexP3-script
+* Dust-couter
+* `Apex.py`
 
+```python
+#!/opt/monitor/venv/bin/python
+import sys
+import time
+import logging
+from pathlib import Path
+import json
+import serial
+import os
+from pyModbusTCP.client import ModbusClient
+
+logging.basicConfig(stream=sys.stdout, format="%(asctime)s %(levelname)-8s %(message)s", level=logging.DEBUG)
+
+v_delay    = 0
+v_hold     = 10
+v_sample   = 900
+v_interval = 890
+v_sleep    = 0.5
+SLOWDIR    = '/opt/monitor'
+
+def read_serial(client):
+
+    regs   = client.read_holding_registers(4, 2)
+    serial = (regs[0] << 16) + regs[1]
+    return serial
+
+def read_device_setting(client):
+
+    # check initial setting
+    regs   = client.read_holding_registers(28,2)
+    delay  = (regs[0] << 16) + regs[1]
+    regs   = client.read_holding_registers(30,2)
+    hold   = (regs[0] << 16) + regs[1]
+    regs   = client.read_holding_registers(32,2)
+    sample = (regs[0] << 16) + regs[1]
+    if(not(delay == v_delay and hold == v_hold and sample == v_sample)):
+       print("Wrong setting")
+       print("Set :")
+       print("\t delay  = ", v_delay,  " sec")
+       print("\t hold   = ", v_hold,   " sec")
+       print("\t sample = ", v_sample, " sec")
+       client.write_single_register(29, v_delay)
+       client.write_single_register(31, v_hold)
+       client.write_single_register(33, v_sample)
+       client.write_single_register(1, 1)
+
+def read_device_status(client):
+    
+    # check status
+    regs    = client.read_holding_registers( 2, 1)
+    data    = {}
+    data[0] = regs[0] & 0x1        # running
+    data[1] = (regs[0] >> 1) & 0x1 # sampling
+
+    return data
+
+def run_start(client):
+    client.write_single_register(1, 11)
+            
+def run_stop(client):
+    client.write_single_register(1, 12)
+            
+def read_dust(client):
+
+    data = {}
+    reg  = client.read_input_registers(1008, 8)
+    d0d3  = reg[0] * 65536 + reg[1]
+    d0d5  = reg[2] * 65536 + reg[3]
+    d5d0  = reg[4] * 65536 + reg[5]
+    d10d0 = reg[6] * 65536 + reg[7]
+
+    data[0] = d0d3
+    data[1] = d0d5
+    data[2] = d5d0
+    data[3] = d10d0
+   
+    return data
+
+def operation(devinfo):
+
+    mod_ip = "192.168.2."+devinfo['dev']
+    c      = ModbusClient(host = mod_ip, port =  502)
+    serial = read_serial(c)
+    read_device_setting(c)
+    status_r = 0
+    status_s = 0
+    status   = read_device_status(c)
+    status_r = status[0]
+    
+    if(status_r == 0):
+        run_start(c)
+        
+    while status_r == 0:
+        status   = read_device_status(c)
+        status_r = status[0]
+        time.sleep(v_sleep)
+
+    while status_s == 0:
+        status   = read_device_status(c)
+        status_s = status[1]
+        time.sleep(v_sleep)
+
+    time.sleep(v_sample)
+
+    while status_s == 1:
+        status   = read_device_status(c)
+        status_s = status[1]
+        time.sleep(v_sleep)
+
+    run_stop(c)
+
+    while status_r == 1:
+        status   = read_device_status(c)
+        status_r = status[0]
+        time.sleep(v_sleep)
+
+    data      = read_dust(c)
+    datapoint = {
+        'name'   : 'Dust Counter',
+        'dev'    : serial,
+        'model'  : devinfo['model'],
+        'time'   : int(time.time()),
+        'd0d3'   : data[0],
+        'd0d5'   : data[1],
+        'd5d0'   : data[2],
+        'd10d0'  : data[3],
+        'sample' : v_sample,
+        'pos'    : devinfo['pos'],
+        'ip'     : devinfo['dev']
+    }
+
+    return datapoint
+
+def main():
+
+    model = os.getenv('DEVICE_MD', '')
+    dev   = os.getenv('DEVICE_IP', '')
+    pos   = os.getenv('DEVICE_POS', '')
+
+    devinfo = {
+        'model' : model,
+        'dev'   : dev,
+        'pos'   : pos
+    }
+
+    while True:
+        data = []
+        try:
+            datapoint = operation(devinfo)
+            data.append(datapoint)
+        except:
+            logging.exception('Exception: ')
+
+        logging.debug(data)
+
+        try:
+            p = Path(SLOWDIR) / 'data' / f'{model}_{pos}_{dev}.dat'
+            with p.open('w') as f:
+                for d in data:
+                    f.write(json.dumps(d)+'\n')
+
+            cmd = f'scp {p} ymmon:/monitor/raw/'
+            os.popen(cmd)
+            time.sleep(v_interval)
+        except KeyboardInterrupt:
+            logging.info('Good bye!')
+            break
+            
+        except NameError:
+            logging.exception('Exception: Wait')
+            time.sleep(60)
+            
+        except:
+            logging.exception('Exception: ')
+            time.sleep(60)
+        
+if __name__ == '__main__':
+    main()
+```
 ### Start-up-script
+* `start.sh`
 
+```bash
+#!/bin/bash
+sleep 30
+sudo supervisorctl start ssh_tunnel
+sudo supervisorctl start run_cam
+sudo supervisorctl start run_UA10
+sudo supervisorctl start rad7-4331
+sudo supervisorctl start run_DSM101
+sleep 30
+sudo supervisorctl restart ssh_tunnel
+sleep 180
+sudo supervisorctl start run_UA58
+sleep 330
+sudo supervisorctl start run_RS9A
+```
 ## Supervisor
 
 ### SSH Tunnel-supervisor
@@ -608,19 +1043,125 @@ stderr_logfile = /opt/monitor/log/ssh_tunnel.err
 ```
 
 ### RAD7-supervisor
+* `rad7.conf`
 
+```
+[program:rad7-3775]
+command = /opt/monitor/script/rad7-serial.py
+directory = /opt/monitor/
+process_name = %(program_name)s
+autostart = false
+autorestart = true
+user = pi
+redirect_stderr = true
+stdout_logfile = /opt/monitor/log/rad7-serial_3775.out
+stderr_logfile = /opt/monitor/log/rad7-serial_3775.err
+environment = DEVICE = "/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A9KGLBIW-if00-port0", DEVICE_TAG = "AMoRE_EXP_HALL", DEVICE_SN = "3775"
+```
 
 ### Radionode-supervisor
+#### UA10-supervisor
+* `UA10.conf`
+
+```
+[program:run_UA10]
+command = /opt/monitor/script/UA10.py
+directory = /opt/monitor/
+process_name = %(program_name)s
+autostart = false
+autorestart = true
+user = pi
+redirect_stderr = true
+stdout_logfile = /opt/monitor/log/UA10.out
+stderr_logfile = /opt/monitor/log/UA10.err
+environment = DEVICE_MD = "UA10", DEVICE_USB = "/dev/serial/by-id/usb-Dekist_Co.__Ltd._UA_SERIES__19040041-if00", DEVICE_POS = "AMoRE_EXP_HALL"
+```
+
+#### UA58-supervisor
+* `UA58.conf`
+
+```
+[program:run_UA58]
+command = /opt/monitor/script/UA58.py
+directory = /opt/monitor/
+process_name = %(program_name)s
+autostart = false
+autorestart = true
+user = pi
+redirect_stderr = true
+stdout_logfile = /opt/monitor/log/UA58.out
+stderr_logfile = /opt/monitor/log/UA58.err
+environment = DEVICE_MD = "UA10", DEVICE_USB = "/dev/serial/by-id/usb-Dekist_Co.__Ltd._UA_SERIES__22110010-if00", DEVICE_POS = "AMoRE_EXP_HALL"
+```
+
 ### FTLab-supervisor
 #### RS9A-supervisor
+* `RS9A.conf`
+
+```
+[program:run_RS9A]
+command = /opt/monitor/script/RS9A.py
+process_name = %(program_name)s
+autostart = false
+autorestart = true
+user = pi
+redirect_stderr = true
+stdout_logfile = /opt/monitor/log/RS9A.out
+stderr_logfile = /opt/monitor/log/RS9A.err
+environment = DEVICE_MD = "RS9A", DEVICE_USB = "/dev/serial/by-id/usb-Silicon_Labs_CP2102_USB_to_UART_Bridge_Controller_0001-if00-port0", DEVICE_POS = "AMoRE_EXP_HALL"
+```
+
 #### DSM101-supervisor
+* `DSM101.conf`
+
+```
+[program:run_DSM101]
+command = /opt/monitor/script/DSM101.py
+process_name = %(program_name)s
+autostart = false
+autorestart = true
+user = pi
+redirect_stderr = true
+stdout_logfile = /opt/monitor/log/DSM101.out
+stderr_logfile = /opt/monitor/log/DSM101.err
+environment = DEVICE_MD = "DSM101", DEVICE_USB = "/dev/serial/by-id/usb-Prolific_Technology_Inc._USB-Serial_Controller_D-if00-port0", DEVICE_POS = "AMoRE_EXP_HALL"
+```
+
 ### ApexP3-supervisor
+* `Apex.conf`
+
+```
+[program:run_APEXP3]
+command = /opt/monitor/script/Apex.py
+process_name = %(program_name)s
+autostart = true
+autorestart = unexpected
+user = webcam2
+redirect_stderr = true
+stdout_logfile = /opt/monitor/log/Apex.out
+stderr_logfile = /opt/monitor/log/Apex.err
+environment = DEVICE_MD = "ApexP3", DEVICE_POS = "AMoRE_EXP_HALL", DEVICE_IP = "200"
+```
 
 ### Start-up-supervisor
+* `start.conf`
 
+```
+[program:startup]
+command = /opt/monitor/script/start.sh
+startsecs = 0
+autostart = true
+autorestart = false
+startretries = 1
+priority = 1
+stdout_logfile = /opt/monitor/log/startup.out
+stderr_logfile = /opt/monitor/log/startup.err
+```
 
 ## ETC
 * In the [files](./files/2_supervisor),
+	* `dhcpcd.conf`
+		* (move to `/etc/` with `sudo`)
 	* `supervisord.conf`
 		* (move to `/etc/supervisor/` with `sudo`)
 	* Supervisor script ([files/supervisor](./files/2_supervisor/supervisor))
