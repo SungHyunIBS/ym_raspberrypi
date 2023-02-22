@@ -58,6 +58,7 @@ fi
 
 ## Install Package
 * `sudo apt update && sudo apt upgrade`
+* `sudo apt autoremove`
 * Install emacs
 	* `sudo apt install emacs`
 
