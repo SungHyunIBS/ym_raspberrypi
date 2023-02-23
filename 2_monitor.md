@@ -908,6 +908,7 @@ def operation(devinfo):
     status   = read_device_status(c)
     status_r = status[0]
     
+    logging.debug("Run Start")
     if(status_r == 0):
         run_start(c)
         
@@ -929,7 +930,7 @@ def operation(devinfo):
         time.sleep(v_sleep)
 
     run_stop(c)
-
+    logging.debug("Run Stop")
     while status_r == 1:
         status   = read_device_status(c)
         status_r = status[0]
