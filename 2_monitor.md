@@ -1036,7 +1036,6 @@ command = ssh -i /home/pi/.ssh/cup_desk_id_rsa -R 12345:localhost:22 ymmon
 process_name = %(program_name)s
 autostart = false
 autorestart = true
-erxitgcodes=0
 user = pi
 stopsignal=KILL
 stdout_logfile = /opt/monitor/log/ssh_tunnel.out
@@ -1049,7 +1048,6 @@ stderr_logfile = /opt/monitor/log/ssh_tunnel.err
 ```
 [program:rad7-3775]
 command = /opt/monitor/script/rad7-serial.py
-directory = /opt/monitor/
 process_name = %(program_name)s
 autostart = false
 autorestart = true
@@ -1067,7 +1065,6 @@ environment = DEVICE = "/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A9KGLBIW-if00
 ```
 [program:run_UA10]
 command = /opt/monitor/script/UA10.py
-directory = /opt/monitor/
 process_name = %(program_name)s
 autostart = false
 autorestart = true
@@ -1084,7 +1081,6 @@ environment = DEVICE_MD = "UA10", DEVICE_USB = "/dev/serial/by-id/usb-Dekist_Co.
 ```
 [program:run_UA58]
 command = /opt/monitor/script/UA58.py
-directory = /opt/monitor/
 process_name = %(program_name)s
 autostart = false
 autorestart = true
@@ -1135,9 +1131,9 @@ environment = DEVICE_MD = "DSM101", DEVICE_USB = "/dev/serial/by-id/usb-Prolific
 [program:run_APEXP3]
 command = /opt/monitor/script/Apex.py
 process_name = %(program_name)s
-autostart = true
-autorestart = unexpected
-user = webcam2
+autostart = false
+autorestart = true
+user = pi
 redirect_stderr = true
 stdout_logfile = /opt/monitor/log/Apex.out
 stderr_logfile = /opt/monitor/log/Apex.err
