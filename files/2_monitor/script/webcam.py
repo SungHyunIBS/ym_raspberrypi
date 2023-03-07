@@ -1,5 +1,4 @@
 #!/opt/monitor/venv/bin/python
-
 from datetime import datetime
 import time
 import cv2
@@ -14,7 +13,10 @@ logging.basicConfig(stream=sys.stdout, format='%(asctime)s %(levelname)-8s %(mes
 minutes=1
 wait=minutes*60
 outputdir = '/opt/monitor/out'
+saveopt   = 0
+saveint   = 5 # 5 min
 def main():
+    cnt = 0
     while True:
         try:
             cap = cv2.VideoCapture(0)
@@ -25,17 +27,30 @@ def main():
             ret, image = cap.read()
             hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
             now = datetime.now()
-            current_time = now.strftime("%Y-%m-%d %H:%M")
+            current_time = now.strftime("%Y%m%d_%H%M")
 
             output = 'webcam.png'
-            outfile = Path(outputdir) / output
-            cv2.imwrite(f'{outfile}', image)
+            outfile1 = Path(outputdir) / output
+            cv2.imwrite(f'{outfile1}', image)
             cap.release()
 
-            logging.info("Save {} : {}".format(output, current_time))
+            if(saveopt == 1):
+                logging.info("Save {} : {}, {}".format(output, current_time, cnt))
+            else:
+                logging.info("Save {} : {}".format(output, current_time))
 
             # copy to YemilabMonitor
-            os.popen("scp {} ymmon:/monitor/www/html/webcam2/".format(outfile))
+            os.popen("scp {} ymmon:/monitor/www/html/webcam1/".format(outfile1))
+
+            # Save webcam for every 'saveint'
+            if(saveopt == 1):
+                cnt += 1
+                if(cnt == saveint):
+                    cnt = 0
+                    outfile2 = 'webcam_'+current_time+'.png'
+                    logging.info("Copy {} : {}".format(outfile2, current_time))
+                    os.popen("scp {} ymmon:/home/cupadmin/webcam1/{}".format(outfile1, outfile2))
+
             time.sleep(wait)
         except KeyboardInterrupt:
             logging.info('Good bye')
