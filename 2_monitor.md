@@ -95,7 +95,7 @@ minutes=1
 wait=minutes*60
 outputdir = '/opt/monitor/out'
 saveopt   = 0
-saveint   = 5 # 5 min
+saveint   = 10 # 10 min
 def main():
     cnt = 0
     while True:
@@ -111,9 +111,14 @@ def main():
             current_time = now.strftime("%Y%m%d_%H%M")
 
             output = 'webcam.png'
+	         outtxt = 'webcam.txt'
             outfile1 = Path(outputdir) / output
+            outtime  = Path(outputdir) / outtxt
             cv2.imwrite(f'{outfile1}', image)
             cap.release()
+
+	         with outtime.open('w') as f:
+                f.write(str(int(time.time()) * 1000)+'\n')
 
             if(saveopt == 1):
                 logging.info("Save {} : {}, {}".format(output, current_time, cnt))
@@ -122,6 +127,7 @@ def main():
 
             # copy to YemilabMonitor
             os.popen("scp {} ymmon:/monitor/www/html/webcam1/".format(outfile1))
+            os.popen("scp {} ymmon:/monitor/www/html/webcam1/".format(outtime))
 
             # Save webcam for every 'saveint'
             if(saveopt == 1):
