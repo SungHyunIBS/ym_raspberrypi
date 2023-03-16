@@ -88,56 +88,62 @@ import sys
 import logging
 import os
 from pathlib import Path
-
 logging.basicConfig(stream=sys.stdout, format='%(asctime)s %(levelname)-8s %(message)s', level=logging.INFO)
 
-minutes=1
-wait=minutes*60
 outputdir = '/opt/monitor/out'
-saveopt   = 0
-saveint   = 10 # 10 min
 def main():
     cnt = 0
+
+    subject  = os.getenv('DEVICE_SUB','')
+    devn     = os.getenv('DEVICE_NUM','')
+    ismulti  = os.getenv('ISMULTICAM','')
+    ismon    = int(os.getenv('ISMONITOR',''))
+    if(ismon == 1):
+        monmin = int(os.getenv('MONMIN',''))
+    capwait  = int(os.getenv('CAPWAIT',''))
+
+    wait     = capwait*60
+    idevn    = int(devn)*4
     while True:
         try:
-            cap = cv2.VideoCapture(0)
+            cap = cv2.VideoCapture(idevn)
             cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc('M','J','P','G'))
-            cap.set(cv2.CAP_PROP_FRAME_WIDTH,  1920)
-            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH,  1920) #3840
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080) #2160
 
             ret, image = cap.read()
             hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
             now = datetime.now()
             current_time = now.strftime("%Y%m%d_%H%M")
 
-            output = 'webcam.png'
-	         outtxt = 'webcam.txt'
-            outfile1 = Path(outputdir) / output
-            outtime  = Path(outputdir) / outtxt
-            cv2.imwrite(f'{outfile1}', image)
-            cap.release()
-
-	         with outtime.open('w') as f:
-                f.write(str(int(time.time()) * 1000)+'\n')
-
-            if(saveopt == 1):
-                logging.info("Save {} : {}, {}".format(output, current_time, cnt))
+            if(int(ismulti) == 0):
+                camdir = outputdir
+                cpdir  = subject
             else:
-                logging.info("Save {} : {}".format(output, current_time))
+                camdir = outputdir+'/webcam'+devn
+                cpdir  = subject+devn
 
-            # copy to YemilabMonitor
-            os.popen("scp {} ymmon:/monitor/www/html/webcam1/".format(outfile1))
-            os.popen("scp {} ymmon:/monitor/www/html/webcam1/".format(outtime))
-
-            # Save webcam for every 'saveint'
-            if(saveopt == 1):
+            output = 'webcam.png'
+            outtxt = 'webcam.txt'
+            outfile = Path(camdir) / output
+            outtime = Path(camdir) / outtxt
+            cv2.imwrite(f'{outfile}', image)
+            cap.release()
+            
+            with outtime.open('w') as f:
+                f.write(str(int(time.time()) * 1000)+'\n')
+                
+            logging.info("Save {} : {}, \t{}".format(output, current_time, cnt))
+            os.popen("scp {} ymmon:/monitor/www/html/{}/".format(outfile, cpdir))
+            os.popen("scp {} ymmon:/monitor/www/html/{}/".format(outtime, cpdir))
+            if(ismon == 1):
                 cnt += 1
-                if(cnt == saveint):
+                if(cnt == monmin):
                     cnt = 0
-                    outfile2 = 'webcam_'+current_time+'.png'
-                    logging.info("Copy {} : {}".format(outfile2, current_time))
-                    os.popen("scp {} ymmon:/home/cupadmin/webcam1/{}".format(outfile1, outfile2))
-
+                    outfile_t = webcam+'_'+current_time+'.png'
+                    logging.info("Copy {} : {}".format(output, current_time))
+                    os.popen("scp {} ymmon:{}/{}".format(outfile, cpdir, outfile_t))
+                
             time.sleep(wait)
         except KeyboardInterrupt:
             logging.info('Good bye')
@@ -1061,6 +1067,23 @@ user = pi
 stopsignal=KILL
 stdout_logfile = /opt/monitor/log/ssh_tunnel.out
 stderr_logfile = /opt/monitor/log/ssh_tunnel.err
+```
+
+### Webcam-supervisor
+* `webcam.conf`
+
+```
+[program:run_cam]
+command = /opt/monitor/script/webcam.py
+directory = /opt/monitor/
+process_name = %(program_name)s
+autostart = false
+autorestart = true
+user = pi
+redirect_stderr=true
+stdout_logfile = /opt/monitor/log/web_cam.out
+stderr_logfile = /opt/monitor/log/web_cam.err
+environment = DEVICE_SUB = "PI", DEVICE_NUM = "0", ISMULTICAM = "0", CAPWAIT = "1", ISMONITOR = "0", MONMIN = "0"
 ```
 
 ### RAD7-supervisor
